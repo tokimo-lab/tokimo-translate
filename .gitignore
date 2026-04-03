@@ -1,0 +1,8 @@
+/target
+.venv/
+.venv-hymt/
+*.pyc
+__pycache__/
+models/
+*.egg-info/
+.DS_Store

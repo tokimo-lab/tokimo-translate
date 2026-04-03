@@ -1,0 +1,51 @@
+[package]
+name = "tokimo-translate"
+version = "0.1.0"
+edition = "2024"
+description = "High-performance Chinese ↔ English translation via Tencent HY-MT1.5 GGUF models and llama.cpp"
+homepage = "https://github.com/tokimo-lab/tokimo-translate"
+repository = "https://github.com/tokimo-lab/tokimo-translate"
+license = "MIT"
+keywords = ["translation", "llm", "chinese", "gguf", "llama"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "onnx_translate"
+path = "src/main.rs"
+
+[[bin]]
+name = "tokimo-translate"
+path = "src/gguf_translate.rs"
+
+[dependencies]
+# ONNX Runtime — same pattern as tokimo.io/packages/rust-models
+ort = { version = "2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "tracing", "load-dynamic", "api-24"] }
+ndarray = "0.16"
+
+# Pure-Rust HF tokenizer (reads tokenizer.json, no system lib needed)
+tokenizers = { version = "0.21", default-features = false, features = ["onig"] }
+
+# Download model files
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "blocking"] }
+
+# llama.cpp GGUF inference — backend selected via features (see Makefile)
+llama-cpp-2 = "0.1"
+encoding_rs = "0.8"
+
+# Misc
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# GPU backend features — select ONE at build time:
+#   NVIDIA:       cargo build --features cuda
+#   Apple Metal:  cargo build --features metal   (auto via `make`)
+#   Vulkan:       cargo build --features vulkan
+#   AMD ROCm:     cargo build --features rocm
+#   CPU fallback: cargo build  (default, no flag needed)
+[features]
+default = []
+cuda   = ["llama-cpp-2/cuda"]
+metal  = ["llama-cpp-2/metal"]
+vulkan = ["llama-cpp-2/vulkan"]
+rocm   = ["llama-cpp-2/rocm"]
