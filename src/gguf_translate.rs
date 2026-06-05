@@ -15,19 +15,20 @@ use llama_cpp_2::{
     context::params::LlamaContextParams,
     llama_backend::LlamaBackend,
     llama_batch::LlamaBatch,
-    model::{params::LlamaModelParams, AddBos, LlamaChatMessage, LlamaModel},
+    model::{AddBos, LlamaChatMessage, LlamaModel, params::LlamaModelParams},
     sampling::LlamaSampler,
 };
-use std::{
-    num::NonZeroU32,
-    path::Path,
-    time::Instant,
-};
+use std::{num::NonZeroU32, path::Path, time::Instant};
 
 /// All GPU layers offloaded when any GPU backend is compiled in.
 /// llama.cpp falls back to CPU automatically if no GPU is available at runtime.
 fn gpu_layers() -> u32 {
-    #[cfg(any(gguf_backend_cuda, gguf_backend_metal, gguf_backend_vulkan, gguf_backend_rocm))]
+    #[cfg(any(
+        gguf_backend_cuda,
+        gguf_backend_metal,
+        gguf_backend_vulkan,
+        gguf_backend_rocm
+    ))]
     return u32::MAX;
     #[cfg(gguf_backend_cpu)]
     return 0;
@@ -55,12 +56,11 @@ fn detect_runtime_gpu() -> String {
     if let Ok(out) = std::process::Command::new("nvidia-smi")
         .args(["--query-gpu=name", "--format=csv,noheader"])
         .output()
+        && out.status.success()
     {
-        if out.status.success() {
-            let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if !name.is_empty() {
-                return format!("NVIDIA {name}");
-            }
+        let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if !name.is_empty() {
+            return format!("NVIDIA {name}");
         }
     }
     // macOS — system_profiler for GPU name
@@ -94,11 +94,17 @@ const GGUF_7B: &str = "/home/william/.cache/huggingface/hub/models--tencent--HY-
 ///   2. `$HUGGINGFACE_HUB_CACHE/hub/...` (same layout)
 ///   3. `~/.cache/huggingface/hub/...` (default)
 ///   4. `env_override` env var (e.g. `HY_MT_1B_PATH=/path/to/file.gguf`)
-pub fn find_gguf_model(repo: &str, filename: &str, env_override: &str) -> Result<std::path::PathBuf> {
+pub fn find_gguf_model(
+    repo: &str,
+    filename: &str,
+    env_override: &str,
+) -> Result<std::path::PathBuf> {
     // 1. Explicit env var override
     if let Ok(path) = std::env::var(env_override) {
         let p = std::path::PathBuf::from(&path);
-        if p.exists() { return Ok(p); }
+        if p.exists() {
+            return Ok(p);
+        }
         anyhow::bail!("${env_override}={path} — file not found");
     }
 
@@ -111,7 +117,10 @@ pub fn find_gguf_model(repo: &str, filename: &str, env_override: &str) -> Result
         });
 
     let folder = format!("models--{}", repo.replace('/', "--"));
-    let snapshots = std::path::PathBuf::from(&hf_home).join("hub").join(folder).join("snapshots");
+    let snapshots = std::path::PathBuf::from(&hf_home)
+        .join("hub")
+        .join(folder)
+        .join("snapshots");
 
     if snapshots.exists() {
         for entry in std::fs::read_dir(&snapshots)? {
@@ -248,7 +257,10 @@ fn run_model(backend: &LlamaBackend, path: &str, label: &str) -> Result<()> {
     for src in &zh_sentences {
         let r = translate(&model, backend, &zh2en_content(src), 128)?;
         println!("  ZH: {src}");
-        println!("  EN: {}  ({}ms, {:.1}t/s)\n", r.translation, r.elapsed_ms, r.tokens_per_sec);
+        println!(
+            "  EN: {}  ({}ms, {:.1}t/s)\n",
+            r.translation, r.elapsed_ms, r.tokens_per_sec
+        );
         total_ms += r.elapsed_ms;
         count += 1;
     }
@@ -257,7 +269,10 @@ fn run_model(backend: &LlamaBackend, path: &str, label: &str) -> Result<()> {
     for src in &en_sentences {
         let r = translate(&model, backend, &en2zh_content(src), 128)?;
         println!("  EN: {src}");
-        println!("  ZH: {}  ({}ms, {:.1}t/s)\n", r.translation, r.elapsed_ms, r.tokens_per_sec);
+        println!(
+            "  ZH: {}  ({}ms, {:.1}t/s)\n",
+            r.translation, r.elapsed_ms, r.tokens_per_sec
+        );
         total_ms += r.elapsed_ms;
         count += 1;
     }
@@ -274,13 +289,29 @@ fn main() -> Result<()> {
     println!("\n  编译后端: {}", compiled_backends());
     println!("  运行时GPU: {runtime_gpu}");
 
-    let path_1b = find_gguf_model("tencent/HY-MT1.5-1.8B-GGUF", "HY-MT1.5-1.8B-Q4_K_M.gguf", "HY_MT_1B_PATH")
-        .unwrap_or_else(|_| std::path::PathBuf::from(GGUF_1B));
-    let path_7b = find_gguf_model("tencent/HY-MT1.5-7B-GGUF", "HY-MT1.5-7B-Q4_K_M.gguf", "HY_MT_7B_PATH")
-        .unwrap_or_else(|_| std::path::PathBuf::from(GGUF_7B));
+    let path_1b = find_gguf_model(
+        "tencent/HY-MT1.5-1.8B-GGUF",
+        "HY-MT1.5-1.8B-Q4_K_M.gguf",
+        "HY_MT_1B_PATH",
+    )
+    .unwrap_or_else(|_| std::path::PathBuf::from(GGUF_1B));
+    let path_7b = find_gguf_model(
+        "tencent/HY-MT1.5-7B-GGUF",
+        "HY-MT1.5-7B-Q4_K_M.gguf",
+        "HY_MT_7B_PATH",
+    )
+    .unwrap_or_else(|_| std::path::PathBuf::from(GGUF_7B));
 
-    run_model(&backend, path_1b.to_str().unwrap(), "HY-MT1.5-1.8B  GGUF Q4_K_M  (~1.1GB)")?;
-    run_model(&backend, path_7b.to_str().unwrap(), "HY-MT1.5-7B    GGUF Q4_K_M  (~4.6GB)")?;
+    run_model(
+        &backend,
+        path_1b.to_str().unwrap(),
+        "HY-MT1.5-1.8B  GGUF Q4_K_M  (~1.1GB)",
+    )?;
+    run_model(
+        &backend,
+        path_7b.to_str().unwrap(),
+        "HY-MT1.5-7B    GGUF Q4_K_M  (~4.6GB)",
+    )?;
 
     Ok(())
 }
@@ -326,7 +357,10 @@ mod tests {
     fn test_prompt_no_extra_instructions() {
         // Prompt must tell model to output translation only
         let p = zh2en_content("test");
-        assert!(p.contains("只需要输出翻译后的结果"), "prompt must suppress extra output");
+        assert!(
+            p.contains("只需要输出翻译后的结果"),
+            "prompt must suppress extra output"
+        );
     }
 
     #[test]
@@ -335,8 +369,10 @@ mod tests {
         let r = find_gguf_model("nonexistent-org/no-model", "no.gguf", "NO_SUCH_ENV_VAR_XYZ");
         assert!(r.is_err(), "missing model should return Err");
         let msg = r.unwrap_err().to_string();
-        assert!(msg.contains("huggingface-cli download") || msg.contains("not found"),
-            "error should contain download instructions");
+        assert!(
+            msg.contains("huggingface-cli download") || msg.contains("not found"),
+            "error should contain download instructions"
+        );
     }
 
     #[test]
@@ -372,16 +408,22 @@ mod tests {
 
     fn load_1b_model(backend: &LlamaBackend) -> Option<LlamaModel> {
         let path = find_gguf_model(
-            "tencent/HY-MT1.5-1.8B-GGUF", "HY-MT1.5-1.8B-Q4_K_M.gguf", "HY_MT_1B_PATH",
-        ).ok()?;
+            "tencent/HY-MT1.5-1.8B-GGUF",
+            "HY-MT1.5-1.8B-Q4_K_M.gguf",
+            "HY_MT_1B_PATH",
+        )
+        .ok()?;
         let params = LlamaModelParams::default().with_n_gpu_layers(gpu_layers());
         LlamaModel::load_from_file(backend, &path, &params).ok()
     }
 
     fn load_7b_model(backend: &LlamaBackend) -> Option<LlamaModel> {
         let path = find_gguf_model(
-            "tencent/HY-MT1.5-7B-GGUF", "HY-MT1.5-7B-Q4_K_M.gguf", "HY_MT_7B_PATH",
-        ).ok()?;
+            "tencent/HY-MT1.5-7B-GGUF",
+            "HY-MT1.5-7B-Q4_K_M.gguf",
+            "HY_MT_7B_PATH",
+        )
+        .ok()?;
         let params = LlamaModelParams::default().with_n_gpu_layers(gpu_layers());
         LlamaModel::load_from_file(backend, &path, &params).ok()
     }
@@ -394,7 +436,10 @@ mod tests {
                 let backend = LlamaBackend::init().unwrap();
                 let model = match $load(&backend) {
                     Some(m) => m,
-                    None => { eprintln!("SKIP: model not found"); return; }
+                    None => {
+                        eprintln!("SKIP: model not found");
+                        return;
+                    }
                 };
                 let r = translate(&model, &backend, &$content_fn($src), 512).unwrap();
                 let out = r.translation.to_lowercase();
@@ -404,7 +449,8 @@ mod tests {
                 assert!(
                     $expect.iter().any(|kw: &&str| r.translation.contains(kw)),
                     "translation missing expected content: {:?}\ngot: {}",
-                    $expect, r.translation
+                    $expect,
+                    r.translation
                 );
                 let _ = out;
             }
@@ -412,35 +458,107 @@ mod tests {
     }
 
     // 1.8B model — zh→en
-    translation_test!(test_1b_zh2en_100, load_1b_model, ZH_100, zh2en_content,
-        &["artificial intelligence", "machine learning", "language model"]);
-    translation_test!(test_1b_zh2en_200, load_1b_model, ZH_200, zh2en_content,
-        &["deep learning", "neural network", "Transformer", "GPT"]);
-    translation_test!(test_1b_zh2en_500, load_1b_model, ZH_500, zh2en_content,
-        &["artificial intelligence", "parameters", "healthcare", "finance"]);
+    translation_test!(
+        test_1b_zh2en_100,
+        load_1b_model,
+        ZH_100,
+        zh2en_content,
+        &[
+            "artificial intelligence",
+            "machine learning",
+            "language model"
+        ]
+    );
+    translation_test!(
+        test_1b_zh2en_200,
+        load_1b_model,
+        ZH_200,
+        zh2en_content,
+        &["deep learning", "neural network", "Transformer", "GPT"]
+    );
+    translation_test!(
+        test_1b_zh2en_500,
+        load_1b_model,
+        ZH_500,
+        zh2en_content,
+        &[
+            "artificial intelligence",
+            "parameters",
+            "healthcare",
+            "finance"
+        ]
+    );
 
     // 1.8B model — en→zh
-    translation_test!(test_1b_en2zh_100, load_1b_model, EN_100, en2zh_content,
-        &["人工智能", "机器学习", "语言模型"]);
-    translation_test!(test_1b_en2zh_200, load_1b_model, EN_200, en2zh_content,
-        &["深度学习", "神经网络", "Transformer"]);
-    translation_test!(test_1b_en2zh_500, load_1b_model, EN_500, en2zh_content,
-        &["人工智能", "参数", "医疗", "金融"]);
+    translation_test!(
+        test_1b_en2zh_100,
+        load_1b_model,
+        EN_100,
+        en2zh_content,
+        &["人工智能", "机器学习", "语言模型"]
+    );
+    translation_test!(
+        test_1b_en2zh_200,
+        load_1b_model,
+        EN_200,
+        en2zh_content,
+        &["深度学习", "神经网络", "Transformer"]
+    );
+    translation_test!(
+        test_1b_en2zh_500,
+        load_1b_model,
+        EN_500,
+        en2zh_content,
+        &["人工智能", "参数", "医疗", "金融"]
+    );
 
     // 7B model — zh→en
-    translation_test!(test_7b_zh2en_100, load_7b_model, ZH_100, zh2en_content,
-        &["artificial intelligence", "machine learning", "language model"]);
-    translation_test!(test_7b_zh2en_200, load_7b_model, ZH_200, zh2en_content,
-        &["deep learning", "neural network", "Transformer"]);
-    translation_test!(test_7b_zh2en_500, load_7b_model, ZH_500, zh2en_content,
-        &["artificial intelligence", "parameters", "healthcare"]);
+    translation_test!(
+        test_7b_zh2en_100,
+        load_7b_model,
+        ZH_100,
+        zh2en_content,
+        &[
+            "artificial intelligence",
+            "machine learning",
+            "language model"
+        ]
+    );
+    translation_test!(
+        test_7b_zh2en_200,
+        load_7b_model,
+        ZH_200,
+        zh2en_content,
+        &["deep learning", "neural network", "Transformer"]
+    );
+    translation_test!(
+        test_7b_zh2en_500,
+        load_7b_model,
+        ZH_500,
+        zh2en_content,
+        &["artificial intelligence", "parameters", "healthcare"]
+    );
 
     // 7B model — en→zh
-    translation_test!(test_7b_en2zh_100, load_7b_model, EN_100, en2zh_content,
-        &["人工智能", "机器学习"]);
-    translation_test!(test_7b_en2zh_200, load_7b_model, EN_200, en2zh_content,
-        &["深度学习", "神经网络"]);
-    translation_test!(test_7b_en2zh_500, load_7b_model, EN_500, en2zh_content,
-        &["人工智能", "参数", "医疗"]);
+    translation_test!(
+        test_7b_en2zh_100,
+        load_7b_model,
+        EN_100,
+        en2zh_content,
+        &["人工智能", "机器学习"]
+    );
+    translation_test!(
+        test_7b_en2zh_200,
+        load_7b_model,
+        EN_200,
+        en2zh_content,
+        &["深度学习", "神经网络"]
+    );
+    translation_test!(
+        test_7b_en2zh_500,
+        load_7b_model,
+        EN_500,
+        en2zh_content,
+        &["人工智能", "参数", "医疗"]
+    );
 }
-
